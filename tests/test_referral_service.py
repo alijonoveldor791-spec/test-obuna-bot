@@ -16,6 +16,7 @@ async def test_attribution(db):
     assert not await attribute(db, invited, 1, True)
     assert await count(db, inviter.id) == 0
     assert not await validate(db, invited, False)
+    invited.is_subscribed = True
     assert await validate(db, invited, True)
     assert not await validate(db, invited, True)
     assert await count(db, inviter.id) == 1

@@ -2,14 +2,18 @@
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.scheduler.jobs import reminders, subscriptions, tick
+from app.config import settings
+from app.db.base import utcnow
+from app.scheduler.jobs import broadcasts, heartbeat, reminders, subscriptions, tick
 
 
 def create_scheduler(bot, redis) -> AsyncIOScheduler:
     """Register periodic DB scans rather than volatile one-shot jobs."""
-    scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
+    scheduler = AsyncIOScheduler(timezone=settings.tz)
     for function, trigger, options in (
-        (tick, "interval", {"seconds": 1}),
+        (tick, "interval", {"seconds": 30, "next_run_time": utcnow()}),
+        (broadcasts, "interval", {"seconds": 1}),
+        (heartbeat, "interval", {"seconds": 15}),
         (subscriptions, "cron", {"hour": 3}),
         (reminders, "interval", {"minutes": 5}),
     ):

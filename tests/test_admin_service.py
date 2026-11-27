@@ -4,9 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
 
 from app.db.models import Admin, Channel
-from app.services.admin_service import channel_command, require, seed
+from app.services.admin_service import channel_command, remove_channel, require, seed
 
 
 async def test_roles(db):
@@ -33,13 +34,13 @@ async def test_channel(db):
         ),
     )
     await channel_command(db, bot, "@title")
-    from sqlalchemy import select
 
     channel = await db.scalar(select(Channel))
     assert channel.is_required and channel.is_main
-    await channel_command(db, bot, f"required {channel.id} 0")
-    assert not channel.is_required
+    with pytest.raises(ValueError):
+        await channel_command(db, bot, f"required {channel.id} 0")
+    assert channel.is_required
     bot.get_chat_member.return_value.status = "member"
     with pytest.raises(ValueError):
         await channel_command(db, bot, "@bad")
-    await channel_command(db, bot, f"del {channel.id}")
+    await remove_channel(db, channel.id)

@@ -7,14 +7,14 @@ from datetime import datetime
 from io import BytesIO
 from tempfile import SpooledTemporaryFile
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AccessLog, Referral, Submission, User
-from app.texts import headers
+from app.texts import headers, t
 
 
 class Report:
@@ -138,3 +138,23 @@ def _append_batch(report: Report, rows: list[tuple]) -> None:
     """Keep workbook preparation off the Telegram event loop."""
     for row in rows:
         report.append(row)
+
+
+async def test_report(session: AsyncSession, test_id: int) -> bytes:
+    """Return one workbook with results and download sheets."""
+    data = [await export(session, kind, test_id) for kind in ("results", "access")]
+    return await asyncio.to_thread(_combine, data)
+
+
+def _combine(data: list[bytes]) -> bytes:
+    """Stream generated sheets into a single workbook."""
+    workbook = Workbook(write_only=True)
+    for title, content in zip((t("sheet_results"), t("sheet_access")), data, strict=True):
+        source = load_workbook(BytesIO(content), read_only=True)
+        sheet = workbook.create_sheet(title)
+        for row in source.active.iter_rows(values_only=True):
+            sheet.append(row)
+        source.close()
+    target = BytesIO()
+    workbook.save(target)
+    return target.getvalue()

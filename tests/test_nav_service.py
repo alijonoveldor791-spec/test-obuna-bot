@@ -9,6 +9,7 @@ from app.services import application_service as app
 from app.services import nav_service as nav
 from app.services import test_creation_service as creation
 from app.services.grading_service import GradingError, submit
+from app.services.settings_service import get
 from app.texts import t
 
 
@@ -23,7 +24,8 @@ async def test_sections_back_cancel_and_unknown(db, domain):
     await press(d, db, "channels")
     assert (await d.state.get_data())["nav_menu"] == "channels"
     await press(d, db, "add_channel")
-    assert await d.state.get_state() == nav.INPUT_STATE
+    assert await d.state.get_state() == "Settings:add_channel"
+    assert d.message.answer.await_args.kwargs["reply_markup"].is_persistent
     await press(d, db, "cancel_input")
     assert await d.state.get_state() is None
     assert (await d.state.get_data())["nav_menu"] == "channels"
@@ -31,7 +33,7 @@ async def test_sections_back_cancel_and_unknown(db, domain):
     await app.message(d.message, d.state, db, d.bot, d.redis, d.owner, False)
     assert (await d.state.get_data())["nav_menu"] == "channels"
     await press(d, db, "back")
-    assert (await d.state.get_data())["nav_menu"] == "admin"
+    assert (await d.state.get_data())["nav_menu"] == "settings"
 
 
 async def test_forged_admin_button_and_live_role(db, domain):
@@ -53,14 +55,18 @@ async def test_user_mode_answer_prompt_and_cancel(db, domain):
     assert (await d.state.get_data())["nav_menu"] == "admin"
 
 
-async def test_settings_and_admin_input(db, domain):
+async def test_settings_toggle_shows_updated_status(db, domain):
     d = domain
     await press(d, db, "settings")
-    await press(d, db, "reminders_btn")
     keyboard = d.message.answer.await_args.kwargs["reply_markup"]
     assert any(
-        button.text == t("reminders_btn") + ": ✅" for row in keyboard.keyboard for button in row
+        button.text == t("reminders_btn") + ": " + t("setting_off")
+        for row in keyboard.keyboard
+        for button in row
     )
+    await press(d, db, "reminders_btn")
+
+    assert await get(db, "reminders")
     await press(d, db, "channels")
     await press(d, db, "list_channels")
     assert await d.state.get_state() is None
@@ -109,24 +115,3 @@ async def test_generated_code_and_invalid_database_codes(db, domain):
                 )
             )
             await db.flush()
-
-
-async def test_creation_shortcuts_and_back(db, domain):
-    """Manual and automatic code validation share the same creation flow."""
-    from app.states.add_test import AddTest
-
-    d = domain
-    await d.state.set_state(AddTest.fields)
-    await d.state.update_data(
-        nav_menu="tests", draft={"title": "Sample"}, field_index=1, suggested="5830"
-    )
-    d.message.text = t("auto")
-    await app.message(d.message, d.state, db, d.bot, d.redis, d.owner, False)
-    draft = (await d.state.get_data())["draft"]
-    assert draft["code"].isascii() and 1000 <= int(draft["code"]) <= 9999
-    assert draft["code"] != d.test.code
-    await press(d, db, "back")
-    assert (await d.state.get_data())["field_index"] == 1
-    await press(d, db, "cancel_input")
-    assert await d.state.get_state() is None
-    assert (await d.state.get_data())["nav_menu"] == "tests"

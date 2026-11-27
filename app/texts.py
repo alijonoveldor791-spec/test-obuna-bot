@@ -1,26 +1,16 @@
 """User-facing translations with Uzbek fallback."""
 
 import json
-from contextvars import ContextVar
 from pathlib import Path
 
 _LOCALES = {
-    lang: json.loads(
-        (Path(__file__).parent / "locales" / f"{lang}.json").read_text(encoding="utf-8")
-    )
-    for lang in ("uz", "ru")
+    "uz": json.loads((Path(__file__).parent / "locales" / "uz.json").read_text(encoding="utf-8"))
 }
-
-
-current_language: ContextVar[str] = ContextVar("language", default="uz")
 
 
 def t(message_key: str, lang: str | None = None, **values: object) -> str:
     """Format a localized string; missing translations fall back to Uzbek."""
-    lang = lang or current_language.get()
-    return str(_LOCALES.get(lang, {}).get(message_key, _LOCALES["uz"][message_key])).format(
-        **values
-    )
+    return str(_LOCALES["uz"][message_key]).format(**values)
 
 
 def headers(key: str) -> list[str]:

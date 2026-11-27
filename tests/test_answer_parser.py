@@ -14,9 +14,8 @@ def test_thirty_question_key(separator):
 
 
 @pytest.mark.parametrize("text", ["ab", "1a 2b", "1a2b", "1a;2b", "1a,,2b", "1a,2b,", ",1a,2b"])
-def test_key_requires_commas(text):
-    with pytest.raises(AnswerError):
-        parse_key(text, 2)
+def test_key_shares_formats(text):
+    assert parse_key(text, 2) == parse_answers(text, 2)
 
 
 @pytest.mark.parametrize("text", ["1a,1b", "1a,3b", "1a,2e", "0a,2b"])

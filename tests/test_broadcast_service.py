@@ -10,22 +10,28 @@ from sqlalchemy import select
 from app.db.models import AccessLog, Broadcast
 from app.services import broadcast_ui_service as ui
 from app.services.broadcast_service import audience_query, run_batch, send_one
-from tests.helpers import callback
+from app.texts import t
 
 
 async def test_composer(db, domain):
     d = domain
-    d.message.text = "pending " + str(d.test.id)
-    await ui.audience(d.message, d.state, db, d.owner)
-    d.message.text = "Test announcement"
-    await ui.content(d.message, d.state, db, d.owner)
-    d.message.text = "Visit | https://example.org"
-    await ui.button(d.message, d.state, db, d.owner)
+
+    await ui.start(d.message, d.state, db, d.owner, "pending_btn")
+    d.message.text = next(iter((await d.state.get_data())["broadcast_tests"]))
+    await ui.handle(d.message, d.state, db, d.owner)
+    for text in ("Test announcement", t("broadcast_add_link"), "Visit", "https://example.org"):
+        d.message.text = text
+        await ui.handle(d.message, d.state, db, d.owner)
     row = await db.scalar(select(Broadcast))
     assert row.status == "draft" and row.total == 0
-    await ui.action(callback(""), d.state, db, d.owner, "send", row.id)
+    assert d.message.answer.call_args_list[-2].args[0] == ui.outgoing(
+        (await d.state.get_data())["broadcast"]
+    )
+    d.message.text = t("broadcast_send")
+    await ui.handle(d.message, d.state, db, d.owner)
     assert row.status == "running"
-    await ui.action(callback(""), d.state, db, d.owner, "cancel", row.id)
+    d.message.text = t("broadcast_stop")
+    await ui.handle(d.message, d.state, db, d.owner)
     assert row.status == "cancelled"
 
 
@@ -87,10 +93,7 @@ async def test_audiences_and_batch(db, domain, monkeypatch):
 
 async def test_invalid_composer(db, domain):
     d = domain
-    d.message.text = "invalid"
-    with pytest.raises(ValueError):
-        await ui.audience(d.message, d.state, db, d.owner)
-    await d.state.update_data(broadcast={"audience": "all"})
+    await ui.start(d.message, d.state, db, d.owner, "all_btn")
     d.message.text = ""
     with pytest.raises(ValueError):
-        await ui.content(d.message, d.state, db, d.owner)
+        await ui.handle(d.message, d.state, db, d.owner)

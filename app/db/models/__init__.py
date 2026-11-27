@@ -58,6 +58,8 @@ class Test(Base):
     __tablename__ = "tests"
     __test__ = False
     __table_args__ = (
+        CheckConstraint("max_attempts = 1", name="ck_tests_single_attempt"),
+        CheckConstraint("status IN ('draft','active','closed')", name="ck_tests_lifecycle"),
         CheckConstraint(
             "questions_count > 0 AND max_attempts > 0 AND referral_count >= 0 AND prizes_count >= 0"
         ),
@@ -80,6 +82,7 @@ class Test(Base):
     code: Mapped[str] = mapped_column(String(4))
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
+    custom_caption: Mapped[str | None] = mapped_column(Text)
     pdf_file_id: Mapped[str] = mapped_column(Text)
     pdf_path: Mapped[str] = mapped_column(Text)
     preview_file_id: Mapped[str | None] = mapped_column(Text)

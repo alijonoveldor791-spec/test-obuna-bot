@@ -13,6 +13,8 @@ async def test_publish_and_results(db, domain, monkeypatch):
     text = caption(test, domain.channel)
     assert len(text.encode("utf-16-le")) // 2 <= 1024
     assert test.code in text and "https://t.me/" in text
+    test.status = "draft"
+    test.channel_post_id = None
     await publish(db, domain.bot, test.id)
     assert test.channel_post_id == 42 and test.preview_file_id == "preview_file"
     await publish(db, domain.bot, test.id, 1)
@@ -23,7 +25,7 @@ async def test_publish_and_results(db, domain, monkeypatch):
     test.show_key_after_close = True
     await results(db, domain.bot, test.id)
     assert test.results_published and row.rank == 1
-    assert domain.bot.send_message.await_count >= 3
+    assert domain.bot.send_message.await_count == 2
     with pytest.raises(ValueError):
         await results(db, domain.bot, test.id)
     with pytest.raises(ValueError):

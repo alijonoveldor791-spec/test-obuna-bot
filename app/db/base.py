@@ -17,6 +17,8 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-connect_args = {"timeout":10,"command_timeout":60} if settings.database_url.startswith("postgresql") else {}
-engine = create_async_engine(settings.database_url, pool_pre_ping=True,connect_args=connect_args)
+connect_args = (
+    {"timeout": 10, "command_timeout": 60} if settings.database_url.startswith("postgresql") else {}
+)
+engine = create_async_engine(settings.database_url, pool_pre_ping=True, connect_args=connect_args)
 sessions = async_sessionmaker(engine, expire_on_commit=False)

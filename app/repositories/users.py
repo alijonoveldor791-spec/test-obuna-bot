@@ -18,6 +18,7 @@ async def upsert(session: AsyncSession, telegram_user) -> tuple[User, bool]:
         session.add(user)
     user.username = telegram_user.username
     user.full_name = telegram_user.full_name[:256]
+    user.is_blocked = False
     user.last_active = utcnow()
     await session.flush()
     return user, new

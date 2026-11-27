@@ -6,13 +6,14 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.base import utcnow
 from app.db.models import AccessLog, Referral, Submission, Test, User
 
 
 async def general(session: AsyncSession) -> dict:
     """Count growth using Tashkent calendar boundaries."""
-    now = utcnow().astimezone(ZoneInfo("Asia/Tashkent"))
+    now = utcnow().astimezone(ZoneInfo(settings.tz))
     day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     result = {}
     for key, start in (
@@ -31,13 +32,15 @@ async def general(session: AsyncSession) -> dict:
         )
         or 0
     )
+    invited = User.__table__.alias("invited")
     rows = (
         await session.execute(
             select(User.full_name, func.count(Referral.id))
             .join(Referral, Referral.inviter_id == User.id)
-            .where(Referral.is_valid.is_(True))
+            .join(invited, invited.c.id == Referral.invited_id)
+            .where(Referral.is_valid.is_(True), invited.c.is_subscribed.is_(True))
             .group_by(User.id, User.full_name)
-            .order_by(func.count(Referral.id).desc())
+            .order_by(func.count(Referral.id).desc(), User.id)
             .limit(10)
         )
     ).all()

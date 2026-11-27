@@ -3,6 +3,9 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import GetChatMember
+
 from app.db.models import Channel, User
 from app.services.subscription_service import check
 
@@ -28,8 +31,6 @@ async def test_cache_and_refresh(db):
 
 
 async def test_multiple_and_error(db):
-    from aiogram.exceptions import TelegramBadRequest
-    from aiogram.methods import GetChatMember
 
     user = User(tg_id=4, full_name="Ali")
     db.add_all(

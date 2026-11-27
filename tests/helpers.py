@@ -42,7 +42,9 @@ def message(text="", tg_id=1):
         chat=SimpleNamespace(id=tg_id, type="private"),
         from_user=SimpleNamespace(id=tg_id, full_name="Owner", username="owner"),
         answer=AsyncMock(),
-        answer_photo=AsyncMock(),
+        answer_photo=AsyncMock(
+            return_value=SimpleNamespace(photo=[SimpleNamespace(file_id="created_preview")])
+        ),
         answer_document=AsyncMock(),
     )
 

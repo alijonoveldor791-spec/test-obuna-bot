@@ -1,11 +1,21 @@
 """Isolated async SQL fixtures."""
 
+import os
+import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pymupdf
+import pytest
 import pytest_asyncio
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.db.models  # noqa: F401
-from app.db.base import Base
+from app.config import settings
+from app.db.base import Base, utcnow
+from app.db.models import Admin, Channel, Test, User
+from tests.helpers import MemoryState, bot, message
 
 
 @pytest_asyncio.fixture
@@ -28,15 +38,6 @@ async def db(tmp_path):
 @pytest_asyncio.fixture
 async def domain(db, tmp_path, monkeypatch):
     """Provide a complete owner/channel/test graph with a generated PDF."""
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock
-
-    import pymupdf
-
-    from app.config import settings
-    from app.db.base import utcnow
-    from app.db.models import Admin, Channel, Test, User
-    from tests.helpers import MemoryState, bot, message
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(settings, "bot_username", "sample_test_bot")
@@ -60,6 +61,7 @@ async def domain(db, tmp_path, monkeypatch):
         title="Sample",
         description="Description",
         pdf_file_id="pdf_file",
+        preview_file_id="preview_file",
         pdf_path=str(path),
         questions_count=2,
         answer_key={"1": "a", "2": "b"},
@@ -87,13 +89,6 @@ async def domain(db, tmp_path, monkeypatch):
 @pytest_asyncio.fixture
 async def postgres_factory():
     """Create an isolated random PostgreSQL schema, never touch existing tables."""
-    import os
-    import uuid
-
-    import pytest
-    from sqlalchemy import text
-
-    from app.config import settings
 
     if os.getenv("TEST_INFRA") != "1":
         pytest.skip("Set TEST_INFRA=1 to enable PostgreSQL integration tests")

@@ -1,8 +1,6 @@
 """Shared Telegram limits and callback namespaces."""
-CALLBACK_TEST = "t"
-CALLBACK_ADMIN = "adm"
+
 CALLBACK_SUBSCRIPTION = "sub"
-CALLBACK_REFERRAL = "ref"
 MAX_CALLBACK_BYTES = 64
 MAX_PDF_BYTES = 20 * 1024 * 1024
 MAX_PHOTO_BYTES = 10_000_000

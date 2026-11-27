@@ -6,10 +6,8 @@ from app.db.models import Setting
 
 DEFAULTS = {
     "protect_content": False,
-    "referral_default": 0,
     "reminders": False,
     "show_key_after_close": False,
-    "language": "uz",
 }
 
 
@@ -24,11 +22,7 @@ async def set_value(session: AsyncSession, key: str, value: object) -> None:
     if key not in DEFAULTS:
         raise ValueError(key)
     default = DEFAULTS[key]
-    if (
-        type(value) is not type(default)
-        or (key == "language" and value not in ("uz", "ru"))
-        or (key == "referral_default" and not 0 <= value <= 1000)
-    ):
+    if type(value) is not type(default):
         raise ValueError(key)
     await session.merge(Setting(key=key, value={"value": value}))
     await session.flush()

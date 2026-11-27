@@ -1,6 +1,7 @@
 """Real PostgreSQL transaction and restart behavior."""
 
 import asyncio
+import uuid
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -9,17 +10,37 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.db.base import utcnow
-from app.db.models import AccessLog, Channel, Delivery, Submission, Test, User
+from app.db.models import AccessLog, Admin, Channel, Delivery, Submission, Test, User
 from app.scheduler import jobs
 from app.services import grading_service, settings_service
 from tests.helpers import bot
+
+
+class IsolatedRedis(Redis):
+    """Keep integration scheduler locks/retry data separate from the live bot."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.test_prefix = "integration:" + uuid.uuid4().hex + ":"
+
+    def lock(self, name, **kwargs):
+        return super().lock(self.test_prefix + name, **kwargs)
+
+    async def hgetall(self, name):
+        return await super().hgetall(self.test_prefix + name)
+
+    async def hset(self, name, **kwargs):
+        return await super().hset(self.test_prefix + name, **kwargs)
+
+    async def delete(self, *names):
+        return await super().delete(*(self.test_prefix + name for name in names))
 
 
 async def seed(factory, **overrides):
     async with factory.begin() as session:
         user = User(tg_id=101, full_name="Student")
         channel = Channel(tg_chat_id=-1001, title="Channel", username="channel")
-        session.add_all([user, channel])
+        session.add_all([user, channel, Admin(tg_id=1, role="owner")])
         await session.flush()
         values = dict(
             code="7234",
@@ -72,12 +93,14 @@ async def test_scheduler_restart_and_reminders(postgres_factory, monkeypatch, tm
         status="draft",
         scheduled_at=utcnow() - timedelta(seconds=1),
     )
-    redis = Redis.from_url(settings.redis_url)
+    redis = IsolatedRedis.from_url(settings.redis_url)
     api = bot()
     try:
         await jobs.tick(api, redis)
         api.send_photo.assert_awaited_once()
-        # A second scan acts like a restarted process: persisted state prevents re-publication.
+        async with factory() as session:
+            test = await session.get(Test, test_id)
+            assert test.status == "active" and test.scheduled_at is None
         await jobs.tick(api, redis)
         api.send_photo.assert_awaited_once()
         async with factory.begin() as session:
@@ -90,7 +113,7 @@ async def test_scheduler_restart_and_reminders(postgres_factory, monkeypatch, tm
         async with factory.begin() as session:
             test = await session.get(Test, test_id)
             test.end_at = utcnow() - timedelta(seconds=1)
-        await jobs.tick(api, redis)
+        await asyncio.gather(jobs.tick(api, redis), jobs.tick(api, redis))
         await jobs.tick(api, redis)
         async with factory() as session:
             assert (await session.get(Test, test_id)).status == "closed"
@@ -103,7 +126,7 @@ async def test_daily_subscription_invalidation(postgres_factory, monkeypatch):
     factory = postgres_factory
     user_id, _ = await seed(factory)
     monkeypatch.setattr(jobs, "sessions", factory)
-    redis = Redis.from_url(settings.redis_url)
+    redis = IsolatedRedis.from_url(settings.redis_url)
     api = bot()
     api.get_chat_member.return_value = SimpleNamespace(status="left")
     async with factory.begin() as session:

@@ -42,12 +42,15 @@ async def test_grade_and_limit(db):
 
 
 async def test_regrade(db):
-    user, test = await setup(db, max_attempts=2)
+    user, test = await setup(db)
     first, _, _ = await submit(db, user, "aa")
-    second, _, _ = await submit(db, user, "ab")
-    assert first.rank is None and second.rank == 1
+    other = User(tg_id=102, full_name="Other")
+    db.add(other)
+    await db.flush()
+    second, _, _ = await submit(db, other, "ab")
+    assert first.rank == 2 and second.rank == 1
     await change_key(db, test.id, "1a,2a")
-    assert first.rank == 1 and first.correct_count == 2 and second.rank is None
+    assert first.rank == 1 and first.correct_count == 2 and second.rank == 2
 
 
 @pytest.mark.parametrize(
@@ -74,5 +77,5 @@ async def test_banned_and_missing(db):
     with pytest.raises(GradingError):
         await submit(db, user, "9999 ab")
     assert score({}, {}) == (0, 0, 0)
-    test.status = "paused"
+    test.status = "closed"
     assert not active(test)

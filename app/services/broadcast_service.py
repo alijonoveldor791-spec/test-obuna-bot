@@ -3,11 +3,11 @@
 import asyncio
 
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
 from app.db.base import sessions
 from app.db.models import AccessLog, Broadcast, Submission, User
+from app.services.notification_service import notify_admins
 from app.texts import t
 
 
@@ -27,12 +27,10 @@ def audience_query(broadcast: Broadcast):
 
 async def send_one(bot, user: User, broadcast: Broadcast) -> bool:
     """Handle flood wait and blocked recipients without stopping the batch."""
-    markup = None
+    text = broadcast.text
     if broadcast.button_url:
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text=broadcast.button_text, url=broadcast.button_url)]
-            ]
+        text += "\n" + t(
+            "broadcast_link", label=broadcast.button_text or "", url=broadcast.button_url
         )
     for attempt in range(4):
         try:
@@ -40,14 +38,11 @@ async def send_one(bot, user: User, broadcast: Broadcast) -> bool:
                 await bot.send_photo(
                     user.tg_id,
                     broadcast.media_file_id,
-                    caption=broadcast.text,
-                    reply_markup=markup,
+                    caption=text,
                     parse_mode=None,
                 )
             else:
-                await bot.send_message(
-                    user.tg_id, broadcast.text, reply_markup=markup, parse_mode=None
-                )
+                await bot.send_message(user.tg_id, text, parse_mode=None)
             return True
         except TelegramForbiddenError:
             user.is_blocked = True
@@ -87,20 +82,16 @@ async def run_batch(bot, broadcast_id: int, batch_size: int = 20) -> None:
             broadcast.status = "done"
         await session.flush()
     if broadcast.status == "done":
-        from app.config import settings
-
-        for admin in settings.admins:
-            try:
-                await bot.send_message(
-                    admin,
-                    t(
-                        "broadcast_progress",
-                        id=broadcast.id,
-                        status=broadcast.status,
-                        total=broadcast.total,
-                        sent=broadcast.sent,
-                        failed=broadcast.failed,
-                    ),
-                )
-            except TelegramAPIError:
-                pass
+        async with sessions.begin() as session:
+            await notify_admins(
+                bot,
+                session,
+                t(
+                    "broadcast_progress",
+                    id=broadcast.id,
+                    status=broadcast.status,
+                    total=broadcast.total,
+                    sent=broadcast.sent,
+                    failed=broadcast.failed,
+                ),
+            )

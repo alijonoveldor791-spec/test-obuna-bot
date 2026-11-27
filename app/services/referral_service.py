@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Referral, User
+from app.db.models import Referral, Test, User
 from app.repositories.referrals import valid_count
 
 
@@ -35,6 +35,6 @@ async def validate(session: AsyncSession, user: User, subscribed: bool) -> bool:
     return changed
 
 
-async def count(session: AsyncSession, user_id: int) -> int:
+async def count(session: AsyncSession, user_id: int, test: Test | None = None) -> int:
     """Count currently subscribed invitations."""
-    return await valid_count(session, user_id)
+    return await valid_count(session, user_id, test)

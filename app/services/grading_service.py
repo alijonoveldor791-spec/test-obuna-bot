@@ -2,7 +2,7 @@
 
 from datetime import UTC
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
@@ -12,6 +12,7 @@ from app.services.answer_parser import parse_answers, parse_key
 from app.services.errors import BusinessError
 from app.services.ranking_service import recalculate
 from app.services.referral_service import count
+from app.services.test_time_service import aware, display
 from app.texts import t
 
 
@@ -24,7 +25,12 @@ def active(test: Test) -> bool:
     deadline = test.end_at
     if deadline and deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=UTC)
-    return test.status == "active" and (deadline is None or deadline > utcnow())
+    return (
+        test.status == "active"
+        and test.start_at is not None
+        and aware(test.start_at) <= utcnow()
+        and (deadline is None or deadline > utcnow())
+    )
 
 
 def score(answers: dict[str, str], key: dict[str, str]) -> tuple[int, int, float]:
@@ -35,6 +41,14 @@ def score(answers: dict[str, str], key: dict[str, str]) -> tuple[int, int, float
 
 async def submit(session: AsyncSession, user: User, text: str) -> tuple[Submission, Test, bool]:
     """Serialize attempts on the test row to enforce attempt limits."""
+    if len(text.strip()) == 4 and text.strip().isdigit():
+        scheduled = await session.scalar(
+            select(Test)
+            .where(Test.code == text.strip(), Test.status.in_(("draft", "active")))
+            .limit(1)
+        )
+        if scheduled and scheduled.start_at and aware(scheduled.start_at) > utcnow():
+            raise GradingError(t("not_started", start=display(scheduled.start_at)))
     parsed = parse_answers(text)
     query = select(Test)
     if parsed.code:
@@ -42,10 +56,14 @@ async def submit(session: AsyncSession, user: User, text: str) -> tuple[Submissi
             (Test.status == "active").desc(), (Test.status == "draft").desc(), Test.id.desc()
         )
     else:
-        query = query.where(Test.status == "active", Test.start_at.is_not(None)).order_by(
-            Test.start_at.desc(), Test.id.desc()
-        )
+        query = query.where(
+            Test.status == "active",
+            Test.start_at <= utcnow(),
+            or_(Test.end_at.is_(None), Test.end_at > utcnow()),
+        ).order_by(Test.start_at.desc(), Test.id.desc())
     test = await session.scalar(query.limit(1).with_for_update())
+    if test is not None and test.start_at and aware(test.start_at) > utcnow():
+        raise GradingError(t("not_started", start=display(test.start_at)))
     if test is not None and test.status == "closed":
         raise GradingError(t("test_closed"))
     if test is None or not active(test):
@@ -53,13 +71,13 @@ async def submit(session: AsyncSession, user: User, text: str) -> tuple[Submissi
     await session.refresh(user)
     if user.is_banned:
         raise GradingError(t("denied"))
-    attempts = await attempt_count(session,test.id,user.id)
-    if attempts >= test.max_attempts:
+    attempts = await attempt_count(session, test.id, user.id)
+    if attempts >= 1:
         raise GradingError(t("attempts"))
-    referrals = await count(session, user.id)
+    referrals = await count(session, user.id, test)
     if test.referral_required and referrals < test.referral_count:
         raise GradingError(
-            t("ref_needed", count=referrals, required=test.referral_count, link="/referral")
+            t("ref_needed", count=referrals, required=test.referral_count, link=t("referral"))
         )
     answers = parse_answers(text, test.questions_count).answers
     correct, wrong, percent = score(answers, test.answer_key)

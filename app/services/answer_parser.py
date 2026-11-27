@@ -20,13 +20,16 @@ class ParsedAnswers:
     answers: dict[str, str]
 
 
-def parse_key(text: str, expected: int) -> ParsedAnswers:
-    """Require comma-separated numbered keys, ignoring surrounding whitespace."""
-    if not text or len(text) > MAX_ANSWER_CHARS:
-        raise AnswerError(t("parse_empty"))
-    if not all(re.fullmatch(r"\s*[0-9]+\s*[a-zA-Z]\s*", item) for item in text.split(",")):
-        raise AnswerError(t("key_format"))
-    return parse_answers(text, expected)
+def parse_key(text: str, expected: int | None = None) -> ParsedAnswers:
+    """Use the same formats and validation for keys and participant answers."""
+    parsed = parse_answers(text, expected)
+    wanted = {str(i) for i in range(1, len(parsed.answers) + 1)}
+    missing = wanted - parsed.answers.keys()
+    if missing:
+        raise AnswerError(t("key_missing", missing=", ".join(sorted(missing, key=int))))
+    if not 1 <= len(parsed.answers) <= 1000:
+        raise AnswerError(t("invalid"))
+    return parsed
 
 
 def parse_answers(text: str, expected: int | None = None) -> ParsedAnswers:
